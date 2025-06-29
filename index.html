@@ -146,10 +146,8 @@
         <h1>🎯 Hit the spot</h1>
     </div>
 
-    <!-- Delete Button -->
     <button id="deleteBtn" class="btn delete-btn" onclick="deleteAll()">❌ Delete All</button>
 
-    <!-- JSON Input Area -->
     <div id="jsonInputArea">
         <textarea id="jsonInput"></textarea>
         <button class="btn" onclick="renderQuestions()">Render Q/A</button>
@@ -158,7 +156,6 @@
     <div id="questionsContainer" class="questions-grid"></div>
 </div>
 
-<!-- Modal -->
 <div id="modal" class="modal" onclick="closeModal(event)">
     <div class="modal-content" onclick="event.stopPropagation()">
         <div class="close-btn" onclick="closeModal(event)">✖</div>
