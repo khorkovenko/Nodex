@@ -188,109 +188,295 @@
 </div>
 
 <script type="module">
-    import { dataUa, dataEn } from './data.js';
+    import data from './data.js';
 
-let qaData = [];
-const defaultLanguage = 'ua';
-let activeLanguage = defaultLanguage;
+    let qaData = [];
+    const defaultLanguage = 'ua';
+    let activeLanguage = defaultLanguage;
+    let currentHighlightedIndex = 0;
 
-document.addEventListener('DOMContentLoaded', () => {
-    activeLanguage = localStorage.getItem('language') || defaultLanguage;
-    setLanguage(activeLanguage);
-});
+    document.addEventListener('DOMContentLoaded', () => {
+        activeLanguage = localStorage.getItem('language') || defaultLanguage;
+        setLanguage(activeLanguage);
 
-function setLanguage(lang) {
-    activeLanguage = lang;
-    localStorage.setItem('language', lang);
-
-    qaData = lang === 'ua' ? dataUa : dataEn;
-
-    document.getElementById('jsonInput').value = JSON.stringify(qaData, null, 2);
-    renderQuestions();
-}
-
-function renderQuestions() {
-    try {
-        const inputField = document.getElementById('jsonInput');
-        const input = inputField.value.trim();
-
-        if (!input) throw new Error("Input is empty. Please add valid JSON.");
-
-        const parsedData = JSON.parse(input);
-
-        if (!Array.isArray(parsedData)) {
-            throw new Error("Invalid format: JSON must be an array of objects.");
-        }
-
-        parsedData.forEach((item, index) => {
-            if (typeof item.question !== "string" || typeof item.answer !== "string") {
-                throw new Error(
-                    `Invalid structure at index ${index}: Each object must contain "question" and "answer" strings.`
-                );
-            }
+        document.addEventListener('keydown', handleKeyNavigation);
+        document.getElementById('modal').addEventListener('click', (event) => {
+            if (event.target.id === 'modal') closeModal();
         });
 
-        qaData = parsedData;
+        document.getElementById('deleteBtn').addEventListener('click', deleteAll);
+        document.getElementById('renderBtn').addEventListener('click', renderQuestions);
+
+        trackEscKeyPress();
+    });
+
+    function setLanguage(lang) {
+        activeLanguage = lang;
+        localStorage.setItem('language', lang);
+
+        qaData = processData(data, lang);
+
+        document.getElementById('jsonInput').value = JSON.stringify(qaData, null, 2);
+        renderQuestions();
+    }
+
+    function processData(data, lang) {
+        const questionKey = `question_${lang}`;
+        const answerKey = `answer_${lang}`;
+
+        return data.map(item => {
+            if (item.question && item.answer) {
+                return { question: item.question, answer: item.answer };
+            } else {
+                return {
+                    question: item[questionKey] || "No question available",
+                    answer: item[answerKey] || "No answer available",
+                };
+            }
+        });
+    }
+
+    function renderQuestions() {
+        try {
+            const inputField = document.getElementById('jsonInput');
+            const input = inputField.value.trim();
+            const filterInputFieldId = "filterInput";
+
+            if (!input) throw new Error("Input is empty. Please add valid JSON.");
+            const parsedData = JSON.parse(input);
+
+            if (!Array.isArray(parsedData)) {
+                throw new Error("Invalid format: JSON must be an array of objects.");
+            }
+
+            qaData = parsedData.map(item => {
+                if (item.question && item.answer) {
+                    return { question: item.question, answer: item.answer };
+                } else {
+                    const localizedQuestion = item[`question_${activeLanguage}`];
+                    const localizedAnswer = item[`answer_${activeLanguage}`];
+                    if (!localizedQuestion || !localizedAnswer) {
+                        throw new Error("Invalid structure: Missing localized question or answer for the selected language.");
+                    }
+                    return {
+                        question: localizedQuestion,
+                        answer: localizedAnswer,
+                    };
+                }
+            });
+
+            const container = document.getElementById('questionsContainer');
+            const parentContainer = container.parentElement;
+            container.innerHTML = '';
+
+            if (!document.getElementById(filterInputFieldId)) {
+                const filterInput = document.createElement('input');
+                filterInput.id = filterInputFieldId;
+                filterInput.type = 'text';
+                filterInput.placeholder = 'Search questions...';
+                filterInput.style.marginBottom = "20px";
+                filterInput.style.width = '100%';
+                filterInput.style.padding = '10px';
+                filterInput.style.border = '1px solid #ccc';
+                filterInput.style.borderRadius = '8px';
+
+                filterInput.addEventListener('input', filterQuestions);
+                parentContainer.prepend(filterInput);
+            }
+
+            qaData.forEach((item, index) => {
+                const card = createCard(item, index);
+                container.appendChild(card);
+            });
+
+            document.getElementById(filterInputFieldId).style.display = 'block';
+            document.getElementById('jsonInputArea').style.display = 'none';
+            document.getElementById('deleteBtn').style.display = 'inline-block';
+            document.getElementById('renderBtn').style.display = 'none';
+        } catch (error) {
+            alert("❌ Error: " + error.message);
+        }
+    }
+
+    function createCard(item, index) {
+        const card = document.createElement('div');
+        card.className = 'question-card';
+        card.innerHTML = `
+            <div class="question-number">Question #${index + 1}</div>
+            <div class="question-text">${item.question}</div>
+        `;
+        card.addEventListener('click', () => openModal(index));
+        return card;
+    }
+
+    function filterQuestions(event) {
+        const searchText = event.target.value.toLowerCase();
         const container = document.getElementById('questionsContainer');
         container.innerHTML = '';
 
         qaData.forEach((item, index) => {
-            const card = document.createElement('div');
-            card.className = 'question-card';
-            card.innerHTML = `
-                <div class="question-number">Question #${index + 1}</div>
-                <div class="question-text">${item.question}</div>
-            `;
-            card.addEventListener('click', () => openModal(index));
-            container.appendChild(card);
+            if (
+                item.question.toLowerCase().includes(searchText) ||
+                item.answer.toLowerCase().includes(searchText)
+            ) {
+                const card = createCard(item, index);
+                container.appendChild(card);
+            }
         });
 
-        document.getElementById('jsonInputArea').style.display = 'none';
-        document.getElementById('deleteBtn').style.display = 'inline-block';
-        document.getElementById('renderBtn').style.display = 'none';
-    } catch (error) {
-        alert("❌ Error: " + error.message);
+        currentHighlightedIndex = 0;
+        highlightCard(currentHighlightedIndex);
     }
-}
 
-function deleteAll() {
-    const container = document.getElementById('questionsContainer');
+    function deleteAll() {
+        const container = document.getElementById('questionsContainer');
+        const inputField = document.getElementById('jsonInput');
+        const filterInput = document.getElementById('filterInput');
 
-    container.innerHTML = '';
-    document.getElementById('jsonInputArea').style.display = 'block';
-    document.getElementById('deleteBtn').style.display = 'none';
-    document.getElementById('renderBtn').style.display = 'inline-block';
+        container.innerHTML = '';
+        if (filterInput) filterInput.style.display = 'none';
 
-    document.getElementById('jsonInput').value = JSON.stringify(
-        activeLanguage === 'ua' ? dataUa : dataEn,
-        null,
-        2
-    );
-    qaData = [];
-}
+        inputField.value = JSON.stringify([{ question: "Example Question", answer: "Example Answer" }], null, 2)
+        + "or" +
+            JSON.stringify([
+                {
+                    "question_ua": "Запитання",
+                    "answer_ua": "Відповідь",
+                    "question_en": "Question",
+                    "answer_en": "Answer"
+                }
+            ], null, 2);
 
-function openModal(index) {
-    document.getElementById('modal-title').textContent = qaData[index]?.question || "";
-    document.getElementById('modal-answer').textContent = qaData[index]?.answer || "";
-    document.getElementById('modal').style.display = 'block';
-    document.body.style.overflow = 'hidden';
-}
 
-function closeModal() {
-    document.getElementById('modal').style.display = 'none';
-    document.body.style.overflow = 'auto';
-}
+        document.getElementById('jsonInputArea').style.display = 'block';
+        document.getElementById('deleteBtn').style.display = 'none';
+        document.getElementById('renderBtn').style.display = 'inline-block';
 
-document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-        closeModal();
+        qaData = [];
     }
-});
 
-window.setLanguage = setLanguage;
-window.renderQuestions = renderQuestions;
-window.deleteAll = deleteAll;
-window.closeModal = closeModal;
+    function openModal(index) {
+        const cardData = qaData[index];
+        if (!cardData) return;
+
+        document.getElementById('modal-title').textContent = cardData.question || "";
+        document.getElementById('modal-answer').textContent = cardData.answer || "";
+
+        const modal = document.getElementById('modal');
+        modal.style.display = 'block';
+
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeModal() {
+        document.getElementById('modal').style.display = 'none';
+        document.body.style.overflow = 'auto';
+    }
+
+    function handleKeyNavigation(event) {
+        const modal = document.getElementById('modal');
+        const modalContent = document.querySelector('.modal-content');
+
+        if (modal.style.display === 'block') {
+            if (event.key === 'Shift') modalContent.scrollBy(0, -20);
+            else if (event.key === 'Control') modalContent.scrollBy(0, 20);
+            return;
+        }
+
+        const cards = document.querySelectorAll('.question-card');
+        if (!cards.length) return;
+
+        const container = document.getElementById('questionsContainer');
+        const totalColumns = Math.floor(container.offsetWidth / cards[0].offsetWidth);
+
+        switch (event.key) {
+            case 'ArrowUp':
+                if (currentHighlightedIndex - totalColumns >= 0) currentHighlightedIndex -= totalColumns;
+                break;
+            case 'ArrowDown':
+                if (currentHighlightedIndex + totalColumns < cards.length) currentHighlightedIndex += totalColumns;
+                break;
+            case 'ArrowLeft':
+                if (currentHighlightedIndex % totalColumns !== 0) currentHighlightedIndex -= 1;
+                break;
+            case 'ArrowRight':
+                if ((currentHighlightedIndex + 1) % totalColumns !== 0 && currentHighlightedIndex + 1 < cards.length)
+                    currentHighlightedIndex += 1;
+                break;
+            case 'Enter':
+                openModal(currentHighlightedIndex);
+                return;
+        }
+
+        highlightCard(currentHighlightedIndex);
+
+        const highlightedCard = cards[currentHighlightedIndex];
+        if (highlightedCard) highlightedCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function highlightCard(index) {
+        const cards = document.querySelectorAll('.question-card');
+        cards.forEach((card, i) => {
+            card.style.backgroundColor = i === index ? '#e0f7fa' : 'white';
+        });
+    }
+
+    function trackEscKeyPress() {
+        let lastPressTime = 0;
+        const doublePressThreshold = 300;
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                const currentTime = Date.now();
+
+                if (currentTime - lastPressTime <= doublePressThreshold) {
+                    resetInput();
+                } else {
+                    closeModal();
+                    document.getElementById('filterInput').focus();
+                }
+
+                lastPressTime = currentTime;
+            }
+
+            if (event.altKey && event.key === '1') {
+                setLanguage('ua')
+            }
+
+            if (event.altKey && event.key === '2') {
+                setLanguage('en')
+            }
+
+
+        });
+    }
+
+    function resetInput() {
+        const container = document.getElementById('questionsContainer');
+        const inputField = document.getElementById('jsonInput');
+        const filterInput = document.getElementById('filterInput');
+
+        container.innerHTML = '';
+
+        if (filterInput) {
+            filterInput.value = '';
+        }
+
+        const localizedData = processData(data, activeLanguage);
+        inputField.value = JSON.stringify(localizedData, null, 2);
+
+        document.getElementById('jsonInputArea').style.display = 'block';
+        document.getElementById('deleteBtn').style.display = 'none';
+        document.getElementById('renderBtn').style.display = 'inline-block';
+
+        qaData = localizedData;
+
+        renderQuestions();
+    }
+
+    window.setLanguage = setLanguage;
+    window.renderQuestions = renderQuestions;
+    window.deleteAll = deleteAll;
 </script>
 </body>
 </html>
