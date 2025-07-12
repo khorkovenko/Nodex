@@ -165,7 +165,10 @@
     <div class="header">
         <h1 style="margin: 0;">🎯 Hit the spot</h1>
         <div class="button-wrapper">
-            <button id="deleteBtn" class="btn delete-btn" onclick="deleteAll()" style="display: none;">❌ Delete All</button>
+            <button id="uaButton" class="btn" onclick="setLanguage('ua')">UA</button>
+            <button id="enButton" class="btn" onclick="setLanguage('en')">EN</button>
+            <button id="deleteBtn" class="btn delete-btn" onclick="deleteAll()" style="display: none;">❌ Delete All
+            </button>
             <button id="renderBtn" class="btn" onclick="renderQuestions()">Render Q/A</button>
         </div>
     </div>
@@ -185,77 +188,109 @@
 </div>
 
 <script type="module">
-    import data from './data.js';
+    import { dataUa, dataEn } from './data.js';
 
-    let qaData = [];
-    const jsonPlaceholder = data;
-    const strPlaceholder = JSON.stringify(jsonPlaceholder, null, 2);
+let qaData = [];
+const defaultLanguage = 'ua';
+let activeLanguage = defaultLanguage;
 
-    document.addEventListener("DOMContentLoaded", () => {
-        document.getElementById('jsonInput').value = strPlaceholder;
-    });
+document.addEventListener('DOMContentLoaded', () => {
+    activeLanguage = localStorage.getItem('language') || defaultLanguage;
+    setLanguage(activeLanguage);
+});
 
-    function renderQuestions() {
-        try {
-            const input = document.getElementById('jsonInput').value;
+function setLanguage(lang) {
+    activeLanguage = lang;
+    localStorage.setItem('language', lang);
 
-            qaData = JSON.parse(input);
-            if (!Array.isArray(qaData)) throw new Error("JSON має бути масивом.");
+    qaData = lang === 'ua' ? dataUa : dataEn;
 
-            const container = document.getElementById('questionsContainer');
-            container.innerHTML = '';
+    document.getElementById('jsonInput').value = JSON.stringify(qaData, null, 2);
+    renderQuestions();
+}
 
-            qaData.forEach((item, index) => {
-                const card = document.createElement('div');
-                card.className = 'question-card';
-                card.innerHTML = `
-                  <div class="question-number">Питання #${index + 1}</div>
-                  <div class="question-text">${item.question}</div>
-                `;
-                card.addEventListener('click', () => openModal(index));
-                container.appendChild(card);
-            });
+function renderQuestions() {
+    try {
+        const inputField = document.getElementById('jsonInput');
+        const input = inputField.value.trim();
 
-            document.getElementById('jsonInputArea').style.display = 'none';
-            document.getElementById('deleteBtn').style.display = 'inline-block';
-            document.getElementById('renderBtn').style.display = 'none';
-        } catch (e) {
-            alert("❌ Помилка парсингу JSON: " + e.message);
+        if (!input) throw new Error("Input is empty. Please add valid JSON.");
+
+        const parsedData = JSON.parse(input);
+
+        if (!Array.isArray(parsedData)) {
+            throw new Error("Invalid format: JSON must be an array of objects.");
         }
+
+        parsedData.forEach((item, index) => {
+            if (typeof item.question !== "string" || typeof item.answer !== "string") {
+                throw new Error(
+                    `Invalid structure at index ${index}: Each object must contain "question" and "answer" strings.`
+                );
+            }
+        });
+
+        qaData = parsedData;
+        const container = document.getElementById('questionsContainer');
+        container.innerHTML = '';
+
+        qaData.forEach((item, index) => {
+            const card = document.createElement('div');
+            card.className = 'question-card';
+            card.innerHTML = `
+                <div class="question-number">Question #${index + 1}</div>
+                <div class="question-text">${item.question}</div>
+            `;
+            card.addEventListener('click', () => openModal(index));
+            container.appendChild(card);
+        });
+
+        document.getElementById('jsonInputArea').style.display = 'none';
+        document.getElementById('deleteBtn').style.display = 'inline-block';
+        document.getElementById('renderBtn').style.display = 'none';
+    } catch (error) {
+        alert("❌ Error: " + error.message);
     }
+}
 
-    function deleteAll() {
-        document.getElementById('questionsContainer').innerHTML = '';
-        document.getElementById('jsonInputArea').style.display = 'block';
-        document.getElementById('deleteBtn').style.display = 'none';
-        document.getElementById('renderBtn').style.display = 'inline-block';
-        document.getElementById('jsonInput').value = strPlaceholder;
-        qaData = [];
+function deleteAll() {
+    const container = document.getElementById('questionsContainer');
+
+    container.innerHTML = '';
+    document.getElementById('jsonInputArea').style.display = 'block';
+    document.getElementById('deleteBtn').style.display = 'none';
+    document.getElementById('renderBtn').style.display = 'inline-block';
+
+    document.getElementById('jsonInput').value = JSON.stringify(
+        activeLanguage === 'ua' ? dataUa : dataEn,
+        null,
+        2
+    );
+    qaData = [];
+}
+
+function openModal(index) {
+    document.getElementById('modal-title').textContent = qaData[index]?.question || "";
+    document.getElementById('modal-answer').textContent = qaData[index]?.answer || "";
+    document.getElementById('modal').style.display = 'block';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+    document.getElementById('modal').style.display = 'none';
+    document.body.style.overflow = 'auto';
+}
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+        closeModal();
     }
+});
 
-    function openModal(index) {
-        document.getElementById('modal-title').textContent = `Питання #${index + 1}: ${qaData[index].question}`;
-        document.getElementById('modal-answer').textContent = qaData[index].answer;
-        document.getElementById('modal').style.display = 'block';
-        document.body.style.overflow = 'hidden';
-    }
-
-    function closeModal(event) {
-        if (event.target.id === 'modal') {
-            document.getElementById('modal').style.display = 'none';
-            document.body.style.overflow = 'auto';
-        }
-    }
-
-    document.addEventListener('keydown', function (event) {
-        if (event.key === 'Escape') {
-            closeModal();
-        }
-    });
-
-    window.renderQuestions = renderQuestions;
-    window.deleteAll = deleteAll;
-    window.closeModal = closeModal;
+window.setLanguage = setLanguage;
+window.renderQuestions = renderQuestions;
+window.deleteAll = deleteAll;
+window.closeModal = closeModal;
 </script>
 </body>
 </html>
